@@ -1,0 +1,25 @@
+all:
+  hosts:
+    192.168.56.10:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    192.168.56.11:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    192.168.56.12:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+control_plane:
+  hosts:
+    192.168.56.10:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+workers:
+  hosts:    
+    192.168.56.11:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    192.168.56.12:
+      ansible_ssh_user: vagrant
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

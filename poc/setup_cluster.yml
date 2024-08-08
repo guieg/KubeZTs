@@ -1,0 +1,147 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+
+  - name: Set SELinux to Permissive mode
+    become: yes
+    selinux:
+      policy: targeted
+      state: permissive
+
+  - name: Update SELinux configuration file
+    become: yes
+    lineinfile:
+      path: /etc/selinux/config
+      regexp: '^SELINUX=enforcing$'
+      line: 'SELINUX=permissive'
+      backup: yes
+    notify:
+      - Reboot if needed
+
+  - name: Add Kubernetes repository
+    become: yes
+    copy:
+      dest: /etc/yum.repos.d/kubernetes.repo
+      content: |
+        [kubernetes]
+        name=Kubernetes
+        baseurl=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/
+        enabled=1
+        gpgcheck=1
+        gpgkey=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/repodata/repomd.xml.key
+        exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+
+  - name: Install Kubernetes tools
+    become: yes
+    yum:
+      name: "{{ item }}"
+      #name: kubelet kubeadm kubectl
+      state: present
+      disable_excludes: kubernetes
+    with_items:
+      - kubelet
+      - kubeadm
+      - kubectl
+
+  - name: Install yum-utils package
+    become: yes
+    dnf:
+      name: yum-utils
+      state: present
+
+  - name: Add Docker CE repository
+    become: yes
+    shell: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+  - name: Install Docker CE packages
+    become: yes
+    dnf:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+
+  - name: Enable containerd CRI
+    command: 'sed -i "s/disabled_plugins/#disabled_plugins/g" /etc/containerd/config.toml'
+    become: yes
+
+  - name: remove swap
+    shell: "swapoff -a"
+  
+  - name: Enable and start kubelet, docker, containerd services
+    become: yes
+    systemd:
+      name: "{{ item }}"
+      enabled: yes
+      state: started
+    with_items:
+      - containerd
+      - docker
+      - kubelet
+
+- hosts: control_plane
+  become: yes
+  tasks:
+    - name: Initialize Kubernetes master
+      command: kubeadm init --apiserver-advertise-address=192.168.56.10 --pod-network-cidr=10.244.0.0/16
+      register: kubeadm_output
+      ignore_errors: yes
+
+    - name: Set up kubectl for the current user
+      command: "{{ item }}"
+      with_items:
+        - "mkdir -p $HOME/.kube"
+        - "cp /etc/kubernetes/admin.conf $HOME/.kube/config"
+        #- "chown $(id -u):$(id -g) $HOME/.kube/config"
+
+    - name: Set up kubectl for the vagrant user
+      command: "{{ item }}"
+      with_items:
+        - "mkdir -p /home/vagrant/.kube"
+        - "cp /etc/kubernetes/admin.conf /home/vagrant/.kube/config"
+        - "chown vagrant:vagrant /home/vagrant/.kube/config"
+
+    - name: Install Calico network plugin
+      command: "kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml"
+
+    - name: get join command
+      shell: kubeadm token create --print-join-command
+      register: join_command_raw
+
+    - name: set join command
+      set_fact:
+        join_command: "{{ join_command_raw.stdout_lines[0] }}"
+
+- hosts: workers
+  become: yes
+  tasks:
+
+    # - name: Debug
+    #   debug:
+    #     msg: "{{ hostvars[item]['join_command'] }}"
+    #   with_items: "{{ groups['control_plane'] }}"
+
+
+    - name: Join worker nodes to the cluster
+      shell: "{{ hostvars[item]['join_command'] }}"
+      with_items: "{{ groups['control_plane'] }}"
+
+
+- hosts: all
+  become: yes
+  tasks:
+
+  - name: Fix KUBELET_EXTRA_ARGS
+    shell: 'echo "KUBELET_EXTRA_ARGS=--node-ip=$(hostname --all-ip-addresses | cut -d " " -f2)" > /etc/sysconfig/kubelet'
+    become: yes
+  
+  - name: Enable and restart kubelet
+    become: yes
+    systemd:
+      name: "kubelet"
+      enabled: yes
+      state: restarted

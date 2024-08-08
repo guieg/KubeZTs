@@ -1,0 +1,20 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["pods"]
+  - level: Metadata
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
+  - level: RequestResponse
+    users: ["system:admin"]
+    verbs: ["create", "update", "patch", "delete"]
+  - level: Metadata
+    nonResourceURLs:
+    - "/healthz"
+    - "/version"
+    omitStages:
+    - "RequestReceived"

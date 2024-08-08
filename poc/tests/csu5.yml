@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: custom-role-list-secrets
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bind-custom-role-list-secrets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: custom-role-list-secrets
+subjects:
+- kind: User
+  name: user-with-list-secrets-permissions
+  apiGroup: rbac.authorization.k8s.io
